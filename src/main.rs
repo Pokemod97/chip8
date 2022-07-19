@@ -1,10 +1,10 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
+use chip8::Chip8;
+use once_cell::unsync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use chip8::Chip8;
-use once_cell::unsync::Lazy;
 
 use log::error;
 
@@ -14,13 +14,11 @@ use winit::event::{Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
-const WIDTH: usize = 360;
-const HEIGHT: usize = 180;
 
 fn main() -> Result<(), Error> {
     let keys = Lazy::new(|| {
         let mut hash_map: HashMap<VirtualKeyCode, u8> = HashMap::new();
-        
+
         hash_map.insert(VirtualKeyCode::Key1, 1);
         hash_map.insert(VirtualKeyCode::Key2, 2);
         hash_map.insert(VirtualKeyCode::Key3, 3);
@@ -60,22 +58,22 @@ fn main() -> Result<(), Error> {
     };
     let mut key: Option<u8> = None;
     let mut chip8: Chip8 = Chip8::setup(&Path::new("chip8-test-suite.ch8"));
-    let mut instructions:u32 = 0;
+    let mut instructions: u32 = 0;
     let mut time = Instant::now();
     let mut other_time = Instant::now();
     event_loop.run(move |event, _, control_flow| {
         // Draw the current frame
         if instructions < 700001 {
-            chip8.run_instruction(&mut key, &mut other_time);
+            if chip8.run_instruction(&mut key, &mut other_time) {
+                window.request_redraw();
+            }
             instructions += 1;
         }
-        if time.elapsed() >= Duration::new(1,0){
+        if time.elapsed() >= Duration::new(1, 0) {
             instructions = 0;
             time = Instant::now();
         }
         if let Event::RedrawRequested(_) = event {
-
-            
             let buffer: Vec<u8> = chip8.draw();
 
             pixels.get_frame().copy_from_slice(&buffer);
@@ -87,8 +85,6 @@ fn main() -> Result<(), Error> {
                 *control_flow = ControlFlow::Exit;
                 return;
             }
-
-
         }
         // Handle input events
         if input.update(&event) {
@@ -103,13 +99,10 @@ fn main() -> Result<(), Error> {
                 pixels.resize_surface(size.width, size.height);
             }
             for (x, k) in keys.iter() {
-                if input.key_pressed(*x) || input.key_held(*x){
+                if input.key_pressed(*x) || input.key_held(*x) {
                     key = Some(*k);
                 }
             }
-        }
-        if event == Event::MainEventsCleared {
-            window.request_redraw();
         }
     });
 }

@@ -1,6 +1,6 @@
-use std::path::Path;
 use std::fs;
-use std::time::{Instant, Duration};
+use std::path::Path;
+use std::time::{Duration, Instant};
 const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
@@ -33,9 +33,9 @@ impl Default for Chip8 {
 }
 
 impl Chip8 {
-    pub fn run_instruction(&mut self, key: &mut Option<u8>, time: &mut Instant) {
+    pub fn run_instruction(&mut self, key: &mut Option<u8>, time: &mut Instant) -> bool {
         if self.pc >= 0xFFE {
-            return;
+            return false;
         }
 
         let instruction = (self.memory[self.pc as usize] as u16) << 8
@@ -47,23 +47,28 @@ impl Chip8 {
         let y = self.registers[((instruction & 0x00F0) >> 4) as usize];
         let v0 = self.registers[0];
         let x = &mut self.registers[((instruction & 0x0F00) >> 8) as usize];
-        
+        let mut screen_modified = false;
+
         match instruction & 0xF000 {
             0 => {
                 if kk == 0xEE {
                     self.pc = self.stack[self.sp as usize];
                     self.sp -= 1;
-                    return
+                    return screen_modified;
                 } else if kk == 0xE0 {
                     self.screen.copy_from_slice(&[[false; 64]; 32]);
+                    screen_modified = true;
                 }
             }
-            0x1000 => {self.pc = adr; return},
+            0x1000 => {
+                self.pc = adr;
+                return false;
+            }
             0x2000 => {
                 self.sp += 1;
-                self.stack[self.sp as usize] = self.pc +2;
+                self.stack[self.sp as usize] = self.pc + 2;
                 self.pc = adr;
-                return;
+                return screen_modified;
             }
             0x3000 => {
                 if self.registers[((instruction & 0x0F00) >> 8) as usize] == kk {
@@ -97,11 +102,11 @@ impl Chip8 {
                     *x = result.0;
                     self.registers[0xF] = !result.1 as u8;
                 }
-                0x6 =>{
+                0x6 => {
                     let end_bit = y & 1;
-                    *x = y>>1;
+                    *x = y >> 1;
                     self.registers[0xF] = end_bit;
-                } ,
+                }
                 0x7 => {
                     let result = x.overflowing_sub(y);
                     *x = result.0;
@@ -110,7 +115,7 @@ impl Chip8 {
                 0xE => {
                     let end_bit = (y >> 7) & 1;
                     *x = y << 1;
-                    println!("{:x}, {:x}, {:x}",y,*x,end_bit);
+                    println!("{:x}, {:x}, {:x}", y, *x, end_bit);
                     self.registers[0xF] = end_bit;
                 }
                 _ => (),
@@ -122,8 +127,11 @@ impl Chip8 {
             }
             0xA000 => {
                 self.register_i = adr;
-            },
-            0xB000 => {self.pc = adr + v0 as u16; return},
+            }
+            0xB000 => {
+                self.pc = adr + v0 as u16;
+                return screen_modified;
+            }
             0xC000 => *x = kk & fastrand::u8(0..=255),
             0xD000 => {
                 let x = (*x % 64) as usize;
@@ -132,10 +140,9 @@ impl Chip8 {
                 for i in 0..n as usize {
                     let byte = self.memory[self.register_i as usize + i];
 
-
-                    for q in 0..8 as usize{
+                    for q in 0..8 as usize {
                         let bit = ((byte >> q.abs_diff(7)) & 1) != 0;
-                        
+
                         match self.screen.get_mut(y + i) {
                             Some(u) => match u.get_mut(x + q) {
                                 Some(handle) => {
@@ -149,6 +156,7 @@ impl Chip8 {
                         };
                     }
                 }
+                screen_modified = true;
                 self.registers[0xF] = overwrite as u8;
             }
             0xE000 => match kk {
@@ -158,25 +166,22 @@ impl Chip8 {
                         *key = None;
                     }
                 }
-                0xA1 => {
-                    match *key {
-                        Some(k) =>{
-                            if *x != k {
-                                self.pc += 2;
-                                *key = None;
-                            }
-                        },
-                        None => self.pc += 2,
+                0xA1 => match *key {
+                    Some(k) => {
+                        if *x != k {
+                            self.pc += 2;
+                            *key = None;
+                        }
                     }
-                    
-                }
+                    None => self.pc += 2,
+                },
                 _ => (),
             },
             0xF000 => match kk {
                 0x07 => *x = self.dt,
                 0x0A => {
                     if None == *key {
-                        return;
+                        return screen_modified;
                     } else {
                         *x = key.unwrap();
                         *key = None;
@@ -219,6 +224,7 @@ impl Chip8 {
         }
 
         self.pc += 2;
+        screen_modified
     }
     pub fn draw(&self) -> Vec<u8> {
         let mut pixels: Vec<u8> = Vec::new();
@@ -250,11 +256,10 @@ impl Chip8 {
             0xF0, 0x80, 0xF0, 0x80, 0xF0, 0xF0, 0x80, 0xF0, 0x80, 0x80,
         ];
         chip8.memory[..80].copy_from_slice(&font);
-        let bytes = fs::read(path).expect("failed to read file") ;
+        let bytes = fs::read(path).expect("failed to read file");
         //let bytes = vec![0x0,0xE0, 0x60, 0x0F, 0xF0, 0x29, 0xD1, 0x15];
         chip8.memory[0x200..(0x200 + bytes.len())].copy_from_slice(&bytes);
         //chip8.memory[0x1FF] = 5;
         chip8
-        
     }
 }
